@@ -1,4 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel
+from typing import List
 
 app = FastAPI(
     title="Task API",
@@ -6,8 +8,21 @@ app = FastAPI(
     version="1.0"
 )
 
-# Stage 0 & 1: Root & Health Check Endpoints
-@app.get("/")
+# Modelo de datos para una tarea
+class Task(BaseModel):
+    id: int
+    title: str
+    done: bool = False
+
+# Base de datos en memoria prellenada con 3 tareas de ejemplo
+tasks_db: List[Task] = [
+    Task(id=1, title="Aprender FastAPI", done=True),
+    Task(id=2, title="Construir mi primera API CRUD", done=False),
+    Task(id=3, title="Subir el proyecto a GitHub", done=False)
+]
+
+# Stage 1: Endpoints base
+@app.get("/", summary="Información de la API")
 def read_root():
     return {
         "name": "Task API",
@@ -15,6 +30,21 @@ def read_root():
         "endpoints": ["/tasks", "/health", "/docs"]
     }
 
-@app.get("/health")
+@app.get("/health", summary="Health Check")
 def health_check():
     return {"status": "ok"}
+
+# Stage 2: Endpoints de lectura (GET)
+@app.get("/tasks", response_model=List[Task], summary="Obtener todas las tareas")
+def get_tasks():
+    return tasks_db
+
+@app.get("/tasks/{task_id}", response_model=Task, summary="Obtener una tarea por ID")
+def get_task(task_id: int):
+    for task in tasks_db:
+        if task.id == task_id:
+            return task
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Task {task_id} not found"
+    )
