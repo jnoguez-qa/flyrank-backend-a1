@@ -21,30 +21,38 @@ class TaskUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1)
     done: Optional[bool] = None
 
-# In-memory database
-tasks_db: List[Task] = [
+# Initial data set
+INITIAL_TASKS = [
     Task(id=1, title="Learn FastAPI", done=True),
     Task(id=2, title="Build my first CRUD API", done=False),
     Task(id=3, title="Push project to GitHub", done=False)
 ]
 
-# Stage 1: Base endpoints
+# In-memory database
+tasks_db: List[Task] = list(INITIAL_TASKS)
+
+# Base endpoints
 @app.get("/", summary="API Root Info")
 def read_root():
     return {
         "name": "Task API",
         "version": "1.0",
-        "endpoints": ["/tasks", "/health", "/docs"]
+        "endpoints": ["/tasks", "/stats", "/health", "/docs"]
     }
 
 @app.get("/health", summary="Health Check")
 def health_check():
     return {"status": "ok"}
 
-# Stage 2: Read endpoints (GET)
-@app.get("/tasks", response_model=List[Task], summary="Get all tasks")
-def get_tasks():
-    return tasks_db
+# Read endpoints (GET) with Filtering and Search
+@app.get("/tasks", response_model=List[Task], summary="Get all tasks with optional filters")
+def get_tasks(done: Optional[bool] = None, search: Optional[str] = None):
+    results = tasks_db
+    if done is not None:
+        results = [t for t in results if t.done == done]
+    if search is not None:
+        results = [t for t in results if search.lower() in t.title.lower()]
+    return results
 
 @app.get("/tasks/{task_id}", response_model=Task, summary="Get a task by ID")
 def get_task(task_id: int):
@@ -56,7 +64,25 @@ def get_task(task_id: int):
         detail=f"Task {task_id} not found"
     )
 
-# Stage 3: Create endpoint (POST)
+# Compute Stats Endpoint
+@app.get("/stats", summary="Get task statistics")
+def get_stats():
+    total = len(tasks_db)
+    done_count = sum(1 for t in tasks_db if t.done)
+    return {
+        "total": total,
+        "done": done_count,
+        "open": total - done_count
+    }
+
+# Seed & Reset Endpoint
+@app.post("/reset", summary="Reset tasks to initial state")
+def reset_tasks():
+    global tasks_db
+    tasks_db = [Task(**task.model_dump()) for task in INITIAL_TASKS]
+    return {"message": "Database reset to initial state", "total": len(tasks_db)}
+
+# Create endpoint (POST)
 @app.post("/tasks", response_model=Task, status_code=status.HTTP_201_CREATED, summary="Create a new task")
 def create_task(payload: TaskCreate):
     clean_title = payload.title.strip()
@@ -71,7 +97,7 @@ def create_task(payload: TaskCreate):
     tasks_db.append(new_task)
     return new_task
 
-# Stage 4: Update & Delete endpoints (PUT & DELETE)
+# Update & Delete endpoints (PUT & DELETE)
 @app.put("/tasks/{task_id}", response_model=Task, summary="Update a task")
 def update_task(task_id: int, payload: TaskUpdate):
     if payload.title is None and payload.done is None:

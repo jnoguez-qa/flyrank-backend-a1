@@ -7,6 +7,9 @@ A RESTful in-memory CRUD API built with Python and FastAPI for managing a to-do 
 - **Full CRUD Support**: Create, Read, Update, and Delete operations.
 - **Input Validation**: Rejects empty task titles with HTTP 400.
 - **Auto-Generated Interactive Docs**: Available via Swagger UI at `/docs`.
+- **Query Filtering & Search**: Filter by completion status (`?done=true`) or search title keywords (`?search=FastAPI`).
+- **Server Computation**: Stats endpoint returning real-time aggregated metrics.
+- **State Reset**: POST `/reset` endpoint to restore starter tasks.
 
 ---
 
@@ -34,11 +37,18 @@ A RESTful in-memory CRUD API built with Python and FastAPI for managing a to-do 
 | :--- | :--- | :--- | :--- |
 | **GET** | `/` | API Information | `200 OK` |
 | **GET** | `/health` | Server Health Check | `200 OK` |
-| **GET** | `/tasks` | List all tasks | `200 OK` |
+| **GET** | `/tasks` | List all tasks (supports `?done=bool` & `?search=str`) | `200 OK` |
 | **GET** | `/tasks/{id}` | Get single task by ID | `200 OK` / `404 Not Found` |
+| **GET** | `/stats` | Get total, done, and open task metrics | `200 OK` |
+| **POST** | `/reset` | Reset database to initial 3 sample tasks | `200 OK` |
 | **POST** | `/tasks` | Create a new task | `201 Created` / `400 Bad Request` |
 | **PUT** | `/tasks/{id}` | Update task title or status | `200 OK` / `400 Bad Request` / `404 Not Found` |
 | **DELETE** | `/tasks/{id}` | Delete task by ID | `204 No Content` / `404 Not Found` |
+
+---
+
+## The Mortality Experiment
+When creating new tasks and subsequently restarting the server process, all newly created data vanishes, reverting back strictly to the 3 initial tasks. This occurs because state is stored purely within volatile RAM memory without persistent disk storage or a database engine; restarting the server process completely clears and re-initializes memory space.
 
 ---
 
