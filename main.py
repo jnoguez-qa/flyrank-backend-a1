@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
-from typing import List
+from typing import Optional, List
 
 app = FastAPI(
     title="Task API",
@@ -14,11 +14,14 @@ class Task(BaseModel):
     title: str
     done: bool = False
 
-# Schema for creating tasks (validates non-empty title)
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, description="Title cannot be empty")
 
-# In-memory database pre-filled with 3 sample tasks
+class TaskUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1)
+    done: Optional[bool] = None
+
+# In-memory database
 tasks_db: List[Task] = [
     Task(id=1, title="Learn FastAPI", done=True),
     Task(id=2, title="Build my first CRUD API", done=False),
@@ -67,3 +70,42 @@ def create_task(payload: TaskCreate):
     new_task = Task(id=new_id, title=clean_title, done=False)
     tasks_db.append(new_task)
     return new_task
+
+# Stage 4: Update & Delete endpoints (PUT & DELETE)
+@app.put("/tasks/{task_id}", response_model=Task, summary="Update a task")
+def update_task(task_id: int, payload: TaskUpdate):
+    if payload.title is None and payload.done is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Request body must contain at least title or done status"
+        )
+
+    for task in tasks_db:
+        if task.id == task_id:
+            if payload.title is not None:
+                clean_title = payload.title.strip()
+                if not clean_title:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Title cannot be empty or blank string"
+                    )
+                task.title = clean_title
+            if payload.done is not None:
+                task.done = payload.done
+            return task
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Task {task_id} not found"
+    )
+
+@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a task")
+def delete_task(task_id: int):
+    for idx, task in enumerate(tasks_db):
+        if task.id == task_id:
+            tasks_db.pop(idx)
+            return
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Task {task_id} not found"
+    )
