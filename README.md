@@ -69,3 +69,20 @@ content-type: application/json
 ## Swagger UI Screenshot
 
 ![Swagger UI](swagger.png)
+
+---
+
+---
+
+## Stage 7 — AI vs Me
+
+### Prompt Used
+> "Build a RESTful in-memory CRUD API in Python using FastAPI for managing a task list. Implement endpoints for GET /tasks, GET /tasks/{id}, POST /tasks, PUT /tasks/{id}, and DELETE /tasks/{id}. Ensure POST and PUT validate task titles and return HTTP 400 Bad Request for empty or missing titles. Return HTTP 404 for non-existent IDs, HTTP 201 for POST, and HTTP 204 for DELETE. Store tasks in an in-memory list with a few starter items. Automatically generate interactive documentation at /docs."
+
+### Code Review & Comparison
+1. **What the AI did better:** It provided extremely thorough docstrings, explicit type annotations, and a comprehensive suite of unit tests out of the box.
+2. **What it got wrong/ignored:** It severely over-engineered the assignment, creating over 11 files and 1,400+ lines of code for a simple single-file in-memory CRUD task. Furthermore, for invalid/empty request bodies, it relied on standard Pydantic validation (which raises `HTTP 422 Unprocessable Entity`) instead of explicitly handling custom `HTTP 400 Bad Request` exceptions as requested.
+3. **What my prompt forgot & AI decisions:** The prompt didn't specify a minimalist scope, so the AI assumed enterprise-level requirements and added extraneous test suites, multi-file module structures, and heavy logging frameworks that were unnecessary for this stage.
+
+### Refined Prompt Takeaway
+When prompting AI for backend modules, specifying constraints on code architecture (e.g., *"keep implementation lightweight in a single main.py file without external test suites"*) is as vital as specifying endpoint business logic.
