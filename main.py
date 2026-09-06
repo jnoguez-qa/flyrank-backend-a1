@@ -90,3 +90,55 @@ def create_task(payload: TaskCreate):
         row = conn.execute("SELECT id, title, done FROM tasks WHERE id = ?", (new_id,)).fetchone()
         
     return Task(id=row["id"], title=row["title"], done=bool(row["done"]))   
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1)
+    done: Optional[bool] = None
+
+# --- STAGE 3: UPDATE & DELETE ENDPOINTS ---
+
+@app.put("/tasks/{task_id}", response_model=Task, summary="Update a task")
+def update_task(task_id: int, payload: TaskUpdate):
+    if payload.title is None and payload.done is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "Request body must contain title or done"}
+        )
+
+    with get_db() as conn:
+        existing = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not existing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "Task not found"}
+            )
+
+        new_title = payload.title.strip() if payload.title is not None else existing["title"]
+        if payload.title is not None and not new_title:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "Title cannot be empty"}
+            )
+
+        new_done = 1 if (payload.done if payload.done is not None else bool(existing["done"])) else 0
+
+        conn.execute(
+            "UPDATE tasks SET title = ?, done = ? WHERE id = ?",
+            (new_title, new_done, task_id)
+        )
+        row = conn.execute("SELECT id, title, done FROM tasks WHERE id = ?", (task_id,)).fetchone()
+
+    return Task(id=row["id"], title=row["title"], done=bool(row["done"]))
+
+@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a task")
+def delete_task(task_id: int):
+    with get_db() as conn:
+        existing = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not existing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "Task not found"}
+            )
+
+        conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    return None
