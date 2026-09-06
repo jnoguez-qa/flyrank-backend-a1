@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr, Field
 from auth_config import supabase
 
@@ -119,3 +119,37 @@ def login(payload: UserAuthSchema):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"error": "Invalid login credentials"}
         )
+
+    from fastapi import Request
+
+# ============================================================================
+# Stage 2 — Public & Protected Gates
+# ============================================================================
+
+@app.get(
+    "/public/info",
+    status_code=status.HTTP_200_OK,
+    summary="Read public, unprotected data",
+    tags=["Public"]
+)
+def get_public_info():
+    return {"message": "Welcome stranger! This info is public."}
+
+
+@app.get(
+    "/protected/profile",
+    status_code=status.HTTP_200_OK,
+    summary="Read private user profile data",
+    tags=["Protected"]
+)
+def get_protected_profile(request: Request):
+    auth_header = request.headers.get("Authorization")
+
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "Access token required"}
+        )
+
+    # Respuesta temporal de Stage 2 (solo verifica que el token fue enviado)
+    return {"message": "Token presented successfully"}
