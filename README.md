@@ -86,3 +86,14 @@ content-type: application/json
 
 ### Refined Prompt Takeaway
 When prompting AI for backend modules, specifying constraints on code architecture (e.g., *"keep implementation lightweight in a single main.py file without external test suites"*) is as vital as specifying endpoint business logic.
+
+## Database Implementation (SQLite)
+
+- **Why SQLite?** It is lightweight, serverless, requires zero configuration, and stores data in a single file (`tasks.db`) that persists across server restarts.
+- **Database Location:** `tasks.db` at the project root (ignored by Git so every clone starts fresh)[cite: 1].
+- **How to Run:**
+  ```bash
+  uvicorn main:app --reload
+
+  Example SQL Query executed manually:
+  SELECT * FROM tasks WHERE done = 1;
