@@ -1,196 +1,121 @@
-from contextlib import asynccontextmanager
-from typing import Optional, List
 from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
+from auth_config import supabase
 
-# Importamos las funciones de conexión que creamos en database.py
-from database import get_db_connection, init_db
-
-
-# ============================================================================
-# Lifespan Event (Inicializa la BD en Docker al arrancar la API)
-# ============================================================================
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Ejecuta init_db() para crear la tabla 'tasks' y los datos de prueba si no existen
-    init_db()
-    yield
-
-
-# ============================================================================
-# Instancia de FastAPI
-# ============================================================================
 app = FastAPI(
-    title="Task API - PostgreSQL",
-    description="PostgreSQL CRUD API running in Docker for FlyRank AI Internship",
-    version="3.0",
-    lifespan=lifespan,
+    title="FlyRank Auth API",
+    description="Authentication API with Supabase Auth for FlyRank Internship",
+    version="1.0"
 )
 
 
 # ============================================================================
-# Modelos Pydantic
+# Schemas (Pydantic Models)
 # ============================================================================
-class Task(BaseModel):
-    id: int
-    title: str
-    done: bool = False
-
-
-class TaskCreate(BaseModel):
-    title: str = Field(..., min_length=1, description="Title cannot be empty")
-
-
-class TaskUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=1)
-    done: Optional[bool] = None
+class UserAuthSchema(BaseModel):
+    email: EmailStr = Field(..., description="User email address")
+    password: str = Field(..., min_length=1, description="User password")
 
 
 # ============================================================================
-# Endpoints de la API
+# Lifespan / Startup Verification (Stage 0)
 # ============================================================================
+@app.on_event("startup")
+def startup_event():
+    print("Server running and connected to Supabase")
 
 
-@app.get("/", summary="API Root Info", tags=["System"])
+@app.get("/", tags=["System"])
 def read_root():
     return {
-        "message": "API running with PostgreSQL in Docker",
-        "docs": "/docs",
+        "message": "Server running and connected to Supabase",
+        "docs": "/docs"
     }
 
 
-# 1. OBTENER TODAS LAS TAREAS (GET)
-@app.get(
-    "/tasks",
-    response_model=List[Task],
-    summary="Get all tasks",
-    tags=["Tasks"],
-)
-def get_tasks():
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, title, done FROM tasks ORDER BY id ASC;")
-            rows = cur.fetchall()
-            return rows
+# ============================================================================
+# Stage 1 — Open Auth Routes (Sign Up & Log In)
+# ============================================================================
 
-
-# 2. OBTENER UNA TAREA POR ID (GET)
-@app.get(
-    "/tasks/{task_id}",
-    response_model=Task,
-    summary="Get a task by ID",
-    tags=["Tasks"],
-)
-def get_task(task_id: int):
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, title, done FROM tasks WHERE id = %s;", (task_id,)
-            )
-            row = cur.fetchone()
-            if not row:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail={"error": "Task not found"},
-                )
-            return row
-
-
-# 3. CREAR UNA NUEVA TAREA (POST)
 @app.post(
-    "/tasks",
-    response_model=Task,
+    "/auth/signup",
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new task",
-    tags=["Tasks"],
+    summary="Create a new user account",
+    tags=["Auth"]
 )
-def create_task(payload: TaskCreate):
-    clean_title = payload.title.strip()
-    if not clean_title:
+def signup(payload: UserAuthSchema):
+    # 1. Input Validation: Check for empty or whitespace-only credentials
+    clean_email = payload.email.strip()
+    clean_password = payload.password.strip()
+
+    if not clean_email or not clean_password:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"error": "Title cannot be empty"},
+            detail={"error": "Email and password cannot be empty"}
         )
 
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            # Usamos RETURNING id, title, done para obtener el objeto insertado directamente en Postgres
-            cur.execute(
-                "INSERT INTO tasks (title, done) VALUES (%s, %s) RETURNING id, title, done;",
-                (clean_title, False),
+    # 2. Call Supabase Auth SDK signUp
+    try:
+        response = supabase.auth.sign_up({
+            "email": clean_email,
+            "password": clean_password
+        })
+
+        if not response.user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "User creation failed"}
             )
-            new_task = cur.fetchone()
-            conn.commit()
-            return new_task
 
+        return response.user
 
-# 4. ACTUALIZAR UNA TAREA (PUT)
-@app.put(
-    "/tasks/{task_id}",
-    response_model=Task,
-    summary="Update a task",
-    tags=["Tasks"],
-)
-def update_task(task_id: int, payload: TaskUpdate):
-    if payload.title is None and payload.done is None:
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"error": "Request body must contain title or done"},
+            detail={"error": str(e)}
         )
 
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            # Verificar si existe la tarea
-            cur.execute("SELECT * FROM tasks WHERE id = %s;", (task_id,))
-            existing = cur.fetchone()
-            if not existing:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail={"error": "Task not found"},
-                )
 
-            new_title = (
-                payload.title.strip()
-                if payload.title is not None
-                else existing["title"]
-            )
-            if payload.title is not None and not new_title:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail={"error": "Title cannot be empty"},
-                )
-
-            new_done = (
-                payload.done if payload.done is not None else existing["done"]
-            )
-
-            cur.execute(
-                "UPDATE tasks SET title = %s, done = %s WHERE id = %s RETURNING id, title, done;",
-                (new_title, new_done, task_id),
-            )
-            updated_task = cur.fetchone()
-            conn.commit()
-            return updated_task
-
-
-# 5. ELIMINAR UNA TAREA (DELETE)
-@app.delete(
-    "/tasks/{task_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a task",
-    tags=["Tasks"],
+@app.post(
+    "/auth/login",
+    status_code=status.HTTP_200_OK,
+    summary="Authenticate user & return JWT",
+    tags=["Auth"]
 )
-def delete_task(task_id: int):
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM tasks WHERE id = %s;", (task_id,))
-            existing = cur.fetchone()
-            if not existing:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail={"error": "Task not found"},
-                )
+def login(payload: UserAuthSchema):
+    # 1. Input Validation: Check for empty fields
+    clean_email = payload.email.strip()
+    clean_password = payload.password.strip()
 
-            cur.execute("DELETE FROM tasks WHERE id = %s;", (task_id,))
-            conn.commit()
-    return None
+    if not clean_email or not clean_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "Email and password cannot be empty"}
+        )
+
+    # 2. Call Supabase Auth SDK signInWithPassword
+    try:
+        response = supabase.auth.sign_in_with_password({
+            "email": clean_email,
+            "password": clean_password
+        })
+
+        if not response.session:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"error": "Invalid login credentials"}
+            )
+
+        return {
+            "access_token": response.session.access_token,
+            "refresh_token": response.session.refresh_token,
+            "token_type": "bearer",
+            "user": response.user
+        }
+
+    except Exception:
+        # Supabase throws an exception on wrong password/unregistered email
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "Invalid login credentials"}
+        )
