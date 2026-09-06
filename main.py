@@ -135,7 +135,6 @@ def login(payload: UserAuthSchema):
 def get_public_info():
     return {"message": "Welcome stranger! This info is public."}
 
-
 @app.get(
     "/protected/profile",
     status_code=status.HTTP_200_OK,
@@ -143,6 +142,7 @@ def get_public_info():
     tags=["Protected"]
 )
 def get_protected_profile(request: Request):
+    # 1. Extraer encabezado Authorization
     auth_header = request.headers.get("Authorization")
 
     if not auth_header or not auth_header.startswith("Bearer "):
@@ -151,5 +151,29 @@ def get_protected_profile(request: Request):
             detail={"error": "Access token required"}
         )
 
-    # Respuesta temporal de Stage 2 (solo verifica que el token fue enviado)
-    return {"message": "Token presented successfully"}
+    # 2. Extraer el string del token
+    token = auth_header.split(" ")[1]
+
+    # 3. Validar el token directamente con Supabase
+    try:
+        user_response = supabase.auth.get_user(token)
+
+        if not user_response or not user_response.user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"error": "Invalid or expired token"}
+            )
+
+        # 4. Retornar la metadata segura del usuario verificado
+        user = user_response.user
+        return {
+            "id": user.id,
+            "email": user.email,
+            "created_at": user.created_at
+        }
+
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "Invalid or expired token"}
+        )
