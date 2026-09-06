@@ -65,3 +65,28 @@ def get_task(task_id: int):
                 detail={"error": "Task not found"}
             )
         return Task(id=row["id"], title=row["title"], done=bool(row["done"]))
+
+    
+class TaskCreate(BaseModel):
+    title: str = Field(..., min_length=1, description="Title cannot be empty")
+
+# --- STAGE 2: CREATE ENDPOINT (POST) ---
+
+@app.post("/tasks", response_model=Task, status_code=status.HTTP_201_CREATED, summary="Create a new task")
+def create_task(payload: TaskCreate):
+    clean_title = payload.title.strip()
+    if not clean_title:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "Title cannot be empty"}
+        )
+
+    with get_db() as conn:
+        cursor = conn.execute(
+            "INSERT INTO tasks (title, done) VALUES (?, ?)",
+            (clean_title, 0)
+        )
+        new_id = cursor.lastrowid
+        row = conn.execute("SELECT id, title, done FROM tasks WHERE id = ?", (new_id,)).fetchone()
+        
+    return Task(id=row["id"], title=row["title"], done=bool(row["done"]))   
