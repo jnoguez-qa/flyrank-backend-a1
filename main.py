@@ -2,6 +2,41 @@ from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
+import sqlite3
+from fastapi import FastAPI
+
+app = FastAPI()
+
+def get_db():
+    conn = sqlite3.connect("tasks.db")
+    conn.row_factory = sqlite3.Row  # Permite acceder a las columnas por nombre
+    return conn
+
+def init_db():
+    with get_db() as conn:
+        # 1. Crear la tabla si no existe
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                done INTEGER DEFAULT 0
+            )
+        """)
+        # 2. Contar filas para insertar semillas solo la primera vez
+        count = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        if count == 0:
+            conn.executemany(
+                "INSERT INTO tasks (title, done) VALUES (?, ?)",
+                [
+                    ("Aprender FastAPI", 1),
+                    ("Conectar SQLite a FastAPI", 0),
+                    ("Completar Assignment 2", 0)
+                ]
+            )
+
+# Ejecutamos la inicialización al arrancar
+init_db()
+
 app = FastAPI(
     title="Task API",
     description="In-memory CRUD API for FlyRank AI Internship W2-A1",
