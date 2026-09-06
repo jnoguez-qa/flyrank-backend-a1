@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException, status, Request
+from fastapi import FastAPI, HTTPException, status, Request, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr, Field
 from auth_config import supabase
 
@@ -7,6 +8,9 @@ app = FastAPI(
     description="Authentication API with Supabase Auth for FlyRank Internship",
     version="1.0"
 )
+
+# Esquema de seguridad Bearer Token para Swagger UI (/docs)
+security = HTTPBearer()
 
 
 # ============================================================================
@@ -44,7 +48,6 @@ def read_root():
     tags=["Auth"]
 )
 def signup(payload: UserAuthSchema):
-    # 1. Input Validation: Check for empty or whitespace-only credentials
     clean_email = payload.email.strip()
     clean_password = payload.password.strip()
 
@@ -54,7 +57,6 @@ def signup(payload: UserAuthSchema):
             detail={"error": "Email and password cannot be empty"}
         )
 
-    # 2. Call Supabase Auth SDK signUp
     try:
         response = supabase.auth.sign_up({
             "email": clean_email,
@@ -83,7 +85,6 @@ def signup(payload: UserAuthSchema):
     tags=["Auth"]
 )
 def login(payload: UserAuthSchema):
-    # 1. Input Validation: Check for empty fields
     clean_email = payload.email.strip()
     clean_password = payload.password.strip()
 
@@ -93,7 +94,6 @@ def login(payload: UserAuthSchema):
             detail={"error": "Email and password cannot be empty"}
         )
 
-    # 2. Call Supabase Auth SDK signInWithPassword
     try:
         response = supabase.auth.sign_in_with_password({
             "email": clean_email,
@@ -114,16 +114,38 @@ def login(payload: UserAuthSchema):
         }
 
     except Exception:
-        # Supabase throws an exception on wrong password/unregistered email
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"error": "Invalid login credentials"}
         )
 
-    from fastapi import Request
 
 # ============================================================================
-# Stage 2 — Public & Protected Gates
+# Stage 4 & 5 — Guard Dependency & Swagger Authorization
+# ============================================================================
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Reusable Dependency Guard to verify JWT with Supabase and activate Swagger Bearer Auth"""
+    token = credentials.credentials
+
+    try:
+        user_response = supabase.auth.get_user(token)
+        if not user_response or not user_response.user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"error": "Invalid or expired token"}
+            )
+        return {"user": user_response.user, "token": token}
+
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "Invalid or expired token"}
+        )
+
+
+# ============================================================================
+# Stage 2 & 4 — Public & Protected Endpoints
 # ============================================================================
 
 @app.get(
@@ -135,45 +157,47 @@ def login(payload: UserAuthSchema):
 def get_public_info():
     return {"message": "Welcome stranger! This info is public."}
 
+
 @app.get(
     "/protected/profile",
     status_code=status.HTTP_200_OK,
     summary="Read private user profile data",
     tags=["Protected"]
 )
-def get_protected_profile(request: Request):
-    # 1. Extraer encabezado Authorization
-    auth_header = request.headers.get("Authorization")
+def get_protected_profile(auth_data: dict = Depends(get_current_user)):
+    user = auth_data["user"]
+    return {
+        "id": user.id,
+        "email": user.email,
+        "created_at": user.created_at
+    }
 
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": "Access token required"}
-        )
 
-    # 2. Extraer el string del token
-    token = auth_header.split(" ")[1]
+@app.get(
+    "/protected/dashboard",
+    status_code=status.HTTP_200_OK,
+    summary="Second protected route to verify middleware reuse",
+    tags=["Protected"]
+)
+def get_protected_dashboard(auth_data: dict = Depends(get_current_user)):
+    user = auth_data["user"]
+    return {
+        "message": f"Welcome to your private dashboard, {user.email}!"
+    }
 
-    # 3. Validar el token directamente con Supabase
+
+@app.post(
+    "/auth/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Terminate the user session",
+    tags=["Auth"]
+)
+def logout(auth_data: dict = Depends(get_current_user)):
     try:
-        user_response = supabase.auth.get_user(token)
-
-        if not user_response or not user_response.user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"error": "Invalid or expired token"}
-            )
-
-        # 4. Retornar la metadata segura del usuario verificado
-        user = user_response.user
-        return {
-            "id": user.id,
-            "email": user.email,
-            "created_at": user.created_at
-        }
-
-    except Exception:
+        supabase.auth.sign_out()
+        return None
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": "Invalid or expired token"}
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": str(e)}
         )
