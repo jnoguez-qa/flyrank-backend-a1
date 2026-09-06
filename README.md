@@ -1,114 +1,124 @@
-# Task API — FlyRank Backend Internship (W3-A3)
+# FlyRank Auth API (FastAPI + Supabase Auth)
 
-A RESTful CRUD API built with Python, FastAPI, and PostgreSQL running inside Docker containers for persistent data storage.
-
-## Features
-- **PostgreSQL Database**: Data persisted in PostgreSQL 16 running inside Docker container (`taskdb`) with host volume mapping (`taskdata`).
-- **Connection Management**: Environment-based configuration using `.env` via `python-dotenv` and lightweight database driver `psycopg`.
-- **Full CRUD Support**: Create, Read, Update, and Delete operations executed with direct raw SQL queries (`SELECT`, `INSERT`, `UPDATE`, `DELETE`).
-- **Input Validation**: Rejects empty or whitespace-only task titles with HTTP 400 Bad Request.
-- **Auto-Generated Interactive Docs**: Available via Swagger UI at `/docs` and ReDoc at `/redoc`.
-- **Lifespan Initialization**: Database table structure and seed tasks automatically checked and initialized on application startup.
+A lightweight, production-ready, modular, and secure backend authentication system built with **FastAPI** (Python 3.12+) and integrated with **Supabase Auth**. This project implements end-to-end user lifecycle management, JSON Web Token (JWT) verification, custom dependency middleware for protected route guards, and full Swagger UI / OpenAPI integration with Bearer Authorization.
 
 ---
 
-## Prerequisites
-- Docker & Docker Desktop running on your machine.
-- Python 3.10+
-- `venv` (Python virtual environment)
+## 🛠️ Tech Stack & Architecture
+
+* **Language:** Python 3.12+
+* **Web Framework:** FastAPI (v0.110+)
+* **ASGI Server:** Uvicorn
+* **Authentication & BaaS:** Supabase Auth Python SDK
+* **Data Validation & Schemas:** Pydantic v2 (utilizing `EmailStr` and field specifications via `email-validator`)
+* **Environment Configuration:** Python-Dotenv
+* **Documentation & Testing:** Interactive Swagger UI / OpenAPI 3.0 (configured with HTTP Bearer Auth security scheme)
 
 ---
 
-## How to Install and Run
+## 📁 Project Structure
 
-1. **Clone the repository:**
+flyrank-backend-a1/
+│
+├── auth_config.py     # Global Supabase client initialization using environment variables
+├── main.py            # FastAPI entry point, Pydantic models, reusable dependencies, and end-to-end routes
+├── .env               # Private environment variables configuration file (git-ignored)
+├── .gitignore         # Exclusion list covering virtual environments, secrets, and system cache
+└── README.md          # Comprehensive technical documentation and setup guide
+
+---
+
+## ⚙️ Environment Variables
+
+Before launching the application, create a `.env` file in the root project directory containing your Supabase project credentials. You can retrieve these values directly from your Supabase Dashboard under `Project Settings -> API`:
+
+| Variable | Type | Description |
+| :--- | :--- | :--- |
+| `SUPABASE_URL` | String | Your unique Supabase project URL (e.g., `https://<project-ref>.supabase.co`) |
+| `SUPABASE_KEY` | String | Your Supabase public anonymous API key (`anon` key) |
+
+---
+
+## 🚀 Installation & Local Development Setup
+
+Follow these sequential steps to set up, configure, and execute the backend application locally using PowerShell on Windows or standard Unix terminals:
+
+1. **Clone the remote GitHub repository:**
    git clone https://github.com/jnoguez-qa/flyrank-backend-a1.git
    cd flyrank-backend-a1
 
-2. **Run PostgreSQL Container in Docker:**
-   docker run -d --name taskdb -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=tasks -v taskdata:/var/lib/postgresql/data postgres:16
-
-3. **Configure Environment Variables:**
-   Copy `.env.example` to create `.env`:
-   cp .env.example .env
-   *Note: Ensure `.env` contains `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/tasks`*
-
-4. **Create and activate virtual environment:**
+2. **Initialize and activate the Python virtual environment (`venv`):**
    python -m venv venv
    .\venv\Scripts\Activate.ps1
 
-5. **Install dependencies:**
-   pip install -r requirements.txt
+3. **Install all required dependencies and packages:**
+   pip install fastapi uvicorn supabase email-validator python-dotenv
 
-6. **Start the server:**
+4. **Verify environment setup and boot the local ASGI Uvicorn development server:**
    uvicorn main:app --reload --port 8000
 
----
-
-## Database Schema & Persistence Verification
-
-### Database Schema (`tasks`)
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | `SERIAL` | `PRIMARY KEY` | Auto-incrementing identifier |
-| `title` | `TEXT` | `NOT NULL` | Task title |
-| `done` | `BOOLEAN` | `DEFAULT FALSE` | Completion status |
-
-### Verify Database directly in Docker:
-docker exec -it taskdb psql -U postgres -d tasks -c "SELECT * FROM tasks;"
+Once initialized, the local API instance will be actively running and listening at `http://localhost:8000`.
 
 ---
 
-## API Endpoints Table
+## 📌 Complete API Endpoint Reference
 
-| Method | Endpoint | Description | Status Code |
-| :--- | :--- | :--- | :--- |
-| **GET** | `/` | API Root Information | `200 OK` |
-| **GET** | `/tasks` | List all tasks from PostgreSQL | `200 OK` |
-| **GET** | `/tasks/{id}` | Get single task by ID | `200 OK` / `404 Not Found` |
-| **POST** | `/tasks` | Create a new task | `201 Created` / `400 Bad Request` |
-| **PUT** | `/tasks/{id}` | Update task title or completion status | `200 OK` / `400 Bad Request` / `404 Not Found` |
-| **DELETE** | `/tasks/{id}` | Delete task by ID | `204 No Content` / `404 Not Found` |
+### 🔓 Public Endpoints (Unrestricted Access)
 
----
+| HTTP Method | Endpoint Path | Summary | Description | Expected Status |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/` | Root Verification | Server vitality check confirming Supabase connection status | `200 OK` |
+| `GET` | `/public/info` | Public Data | Open informational endpoint requiring no authorization header | `200 OK` |
+| `POST` | `/auth/signup` | User Registration | Registers a new user account in Supabase using sanitized credentials | `201 Created` |
+| `POST` | `/auth/login` | User Authentication | Validates user credentials and returns an active JWT `access_token` and `refresh_token` | `200 OK` |
 
-## Sample `curl` Output
+### 🔒 Protected Endpoints (Requires `Authorization: Bearer <JWT_TOKEN>`)
 
-$ curl.exe -i -X POST http://localhost:8000/tasks -H "Content-Type: application/json" -d '{"title":"Probar PostgreSQL en Docker"}'
-
-HTTP/1.1 201 Created
-date: Sun, 06 Sep 2026 21:40:34 GMT
-server: uvicorn
-content-length: 56
-content-type: application/json
-
-{"id":5,"title":"Probar PostgreSQL en Docker","done":false}
+| HTTP Method | Endpoint Path | Summary | Description | Expected Status |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/protected/profile` | Profile Metadata | Verifies incoming JWT directly via Supabase Auth and returns user metadata | `200 OK` |
+| `GET` | `/protected/dashboard` | Private Dashboard | Demonstrates modular middleware reuse using FastAPI's `Depends(get_current_user)` | `200 OK` |
+| `POST` | `/auth/logout` | Session Termination | Invalidates the active user session and logs out the authenticated user | `204 No Content` |
 
 ---
 
-## Swagger UI Screenshot
+## 🛡️ Authentication Architecture & Middleware Security
 
-![Swagger UI](swagger.png)
+The application utilizes FastAPI's dependency injection system (`Depends`) to enforce rigid token validation policies across all protected endpoints:
 
----
-
-## Stage 7 — AI vs Me
-
-### Prompt Used
-> "Build a RESTful in-memory CRUD API in Python using FastAPI for managing a task list. Implement endpoints for GET /tasks, GET /tasks/{id}, POST /tasks, PUT /tasks/{id}, and DELETE /tasks/{id}. Ensure POST and PUT validate task titles and return HTTP 400 Bad Request for empty or missing titles. Return HTTP 404 for non-existent IDs, HTTP 201 for POST, and HTTP 204 for DELETE. Store tasks in an in-memory list with a few starter items. Automatically generate interactive documentation at /docs."
-
-### Code Review & Comparison
-1. **What the AI did better:** It provided extremely thorough docstrings, explicit type annotations, and a comprehensive suite of unit tests out of the box.
-2. **What it got wrong/ignored:** It severely over-engineered the assignment, creating over 11 files and 1,400+ lines of code for a simple single-file in-memory CRUD task. Furthermore, for invalid/empty request bodies, it relied on standard Pydantic validation (which raises `HTTP 422 Unprocessable Entity`) instead of explicitly handling custom `HTTP 400 Bad Request` exceptions as requested.
-3. **What my prompt forgot & AI decisions:** The prompt didn't specify a minimalist scope, so the AI assumed enterprise-level requirements and added extraneous test suites, multi-file module structures, and heavy logging frameworks that were unnecessary for this stage.
-
-### Refined Prompt Takeaway
-When prompting AI for backend modules, specifying constraints on code architecture (e.g., *"keep implementation lightweight in a single main.py file without external test suites"*) is as vital as specifying endpoint business logic.
+1. **Header Parsing:** The `get_current_user` dependency automatically intercepts incoming requests and extracts the `Authorization: Bearer <TOKEN>` header via `HTTPBearer`.
+2. **Cryptographic Validation:** The extracted JWT is submitted directly to `supabase.auth.get_user(token)` to verify its signature, authenticity, and expiration state against the Supabase backend.
+3. **Payload Injection:** Upon successful verification, the user payload and active session token are injected directly into the route handler, guaranteeing zero unauthenticated leakages (`401 Unauthorized` raised on invalid or tampered tokens).
 
 ---
 
-## Database Migration Journey
+## 🧪 Verification & Endpoint Testing via `curl`
 
-- **Stage 1 (In-Memory)**: Volatile RAM storage where data resets on server restart.
-- **Stage 2 (SQLite)**: File-based persistence (`tasks.db`) using Python's built-in `sqlite3` module.
-- **Stage 3 (PostgreSQL in Docker)**: Enterprise-grade relational database engine running in an isolated Docker container with host-mounted volume (`taskdata`) ensuring full data durability, driver abstraction via `psycopg`, and environment variable management using `python-dotenv`.
+To execute end-to-end endpoint verification directly from your PowerShell console, follow this test workflow:
+
+### 1. Register a new user account (`POST /auth/signup`)
+curl.exe -i -X POST http://localhost:8000/auth/signup -H "Content-Type: application/json" -d '{\"email\":\"user@example.com\", \"password\":\"password123\"}'
+
+### 2. Authenticate and retrieve active JWT tokens (`POST /auth/login`)
+curl.exe -i -X POST http://localhost:8000/auth/login -H "Content-Type: application/json" -d '{\"email\":\"user@example.com\", \"password\":\"password123\"}'
+
+### 3. Query protected profile data (`GET /protected/profile`)
+curl.exe -i http://localhost:8000/protected/profile -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>"
+
+### 4. Query protected dashboard endpoint (`GET /protected/dashboard`)
+curl.exe -i http://localhost:8000/protected/dashboard -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>"
+
+### 5. Terminate active user session (`POST /auth/logout`)
+curl.exe -i -X POST http://localhost:8000/auth/logout -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>"
+
+---
+
+## 📖 Interactive OpenAPI & Swagger UI Documentation
+
+The backend includes native OpenAPI integration pre-configured for Bearer Token authorization:
+
+1. Open your browser and navigate to `http://localhost:8000/docs`.
+2. Click on the **`POST /auth/login`** endpoint, execute it with valid user credentials, and copy the returned `access_token`.
+3. Scroll to the top right of the Swagger UI interface and click the **Authorize 🔓** button.
+4. Paste your `access_token` into the Value field and click **Authorize**.
+5. All protected endpoints (`/protected/profile`, `/protected/dashboard`, and `/auth/logout`) are now unlocked and can be tested interactively directly from the UI.
