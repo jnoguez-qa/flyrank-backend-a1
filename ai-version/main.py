@@ -17,6 +17,32 @@ from datetime import datetime
 from enum import Enum
 import uuid
 
+from contextlib import asynccontextmanager
+from database import init_db
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()  # <--- Esto crea la tabla y los datos al iniciar
+    yield
+
+
+app = FastAPI(
+    title="Task Management API",
+    version="1.0.0",
+    lifespan=lifespan,  # <--- Asegúrate de tener esta línea
+)
+
+
+app = FastAPI(
+    title="Task Management API",
+    description="A robust RESTful API for managing tasks with full CRUD operations",
+    version="1.0.0",
+    lifespan=lifespan,  # <--- Agregamos lifespan aquí
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
 # ============================================================================
 # Models and Enums
 # ============================================================================
