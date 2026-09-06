@@ -1,15 +1,21 @@
-# Task API — FlyRank Backend Internship (W2-A1)
+# Task API — FlyRank Backend Internship (W3-A3)
 
-A RESTful in-memory CRUD API built with Python and FastAPI for managing a to-do list.
+A RESTful CRUD API built with Python, FastAPI, and PostgreSQL running inside Docker containers for persistent data storage.
 
 ## Features
-- **In-Memory Storage**: Initialized with sample tasks (no external database required).
-- **Full CRUD Support**: Create, Read, Update, and Delete operations.
-- **Input Validation**: Rejects empty task titles with HTTP 400.
-- **Auto-Generated Interactive Docs**: Available via Swagger UI at `/docs`.
-- **Query Filtering & Search**: Filter by completion status (`?done=true`) or search title keywords (`?search=FastAPI`).
-- **Server Computation**: Stats endpoint returning real-time aggregated metrics.
-- **State Reset**: POST `/reset` endpoint to restore starter tasks.
+- **PostgreSQL Database**: Data persisted in PostgreSQL 16 running inside Docker container (`taskdb`) with host volume mapping (`taskdata`).
+- **Connection Management**: Environment-based configuration using `.env` via `python-dotenv` and lightweight database driver `psycopg`.
+- **Full CRUD Support**: Create, Read, Update, and Delete operations executed with direct raw SQL queries (`SELECT`, `INSERT`, `UPDATE`, `DELETE`).
+- **Input Validation**: Rejects empty or whitespace-only task titles with HTTP 400 Bad Request.
+- **Auto-Generated Interactive Docs**: Available via Swagger UI at `/docs` and ReDoc at `/redoc`.
+- **Lifespan Initialization**: Database table structure and seed tasks automatically checked and initialized on application startup.
+
+---
+
+## Prerequisites
+- Docker & Docker Desktop running on your machine.
+- Python 3.10+
+- `venv` (Python virtual environment)
 
 ---
 
@@ -19,15 +25,37 @@ A RESTful in-memory CRUD API built with Python and FastAPI for managing a to-do 
    git clone https://github.com/jnoguez-qa/flyrank-backend-a1.git
    cd flyrank-backend-a1
 
-2. **Create and activate a virtual environment:**
+2. **Run PostgreSQL Container in Docker:**
+   docker run -d --name taskdb -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=tasks -v taskdata:/var/lib/postgresql/data postgres:16
+
+3. **Configure Environment Variables:**
+   Copy `.env.example` to create `.env`:
+   cp .env.example .env
+   *Note: Ensure `.env` contains `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/tasks`*
+
+4. **Create and activate virtual environment:**
    python -m venv venv
    .\venv\Scripts\Activate.ps1
 
-3. **Install dependencies:**
+5. **Install dependencies:**
    pip install -r requirements.txt
 
-4. **Start the server:**
-   python -m uvicorn main:app --reload --port 8000
+6. **Start the server:**
+   uvicorn main:app --reload --port 8000
+
+---
+
+## Database Schema & Persistence Verification
+
+### Database Schema (`tasks`)
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | `SERIAL` | `PRIMARY KEY` | Auto-incrementing identifier |
+| `title` | `TEXT` | `NOT NULL` | Task title |
+| `done` | `BOOLEAN` | `DEFAULT FALSE` | Completion status |
+
+### Verify Database directly in Docker:
+docker exec -it taskdb psql -U postgres -d tasks -c "SELECT * FROM tasks;"
 
 ---
 
@@ -35,42 +63,32 @@ A RESTful in-memory CRUD API built with Python and FastAPI for managing a to-do 
 
 | Method | Endpoint | Description | Status Code |
 | :--- | :--- | :--- | :--- |
-| **GET** | `/` | API Information | `200 OK` |
-| **GET** | `/health` | Server Health Check | `200 OK` |
-| **GET** | `/tasks` | List all tasks (supports `?done=bool` & `?search=str`) | `200 OK` |
+| **GET** | `/` | API Root Information | `200 OK` |
+| **GET** | `/tasks` | List all tasks from PostgreSQL | `200 OK` |
 | **GET** | `/tasks/{id}` | Get single task by ID | `200 OK` / `404 Not Found` |
-| **GET** | `/stats` | Get total, done, and open task metrics | `200 OK` |
-| **POST** | `/reset` | Reset database to initial 3 sample tasks | `200 OK` |
 | **POST** | `/tasks` | Create a new task | `201 Created` / `400 Bad Request` |
-| **PUT** | `/tasks/{id}` | Update task title or status | `200 OK` / `400 Bad Request` / `404 Not Found` |
+| **PUT** | `/tasks/{id}` | Update task title or completion status | `200 OK` / `400 Bad Request` / `404 Not Found` |
 | **DELETE** | `/tasks/{id}` | Delete task by ID | `204 No Content` / `404 Not Found` |
-
----
-
-## The Mortality Experiment
-When creating new tasks and subsequently restarting the server process, all newly created data vanishes, reverting back strictly to the 3 initial tasks. This occurs because state is stored purely within volatile RAM memory without persistent disk storage or a database engine; restarting the server process completely clears and re-initializes memory space.
 
 ---
 
 ## Sample `curl` Output
 
-$ curl.exe -i -X POST http://localhost:8000/tasks -H "Content-Type: application/json" -d '"{""title"":""Buy milk""}"'
+$ curl.exe -i -X POST http://localhost:8000/tasks -H "Content-Type: application/json" -d '{"title":"Probar PostgreSQL en Docker"}'
 
 HTTP/1.1 201 Created
-date: Sat, 05 Sep 2026 16:24:16 GMT
+date: Sun, 06 Sep 2026 21:40:34 GMT
 server: uvicorn
-content-length: 40
+content-length: 56
 content-type: application/json
 
-{"id":4,"title":"Buy milk","done":false}
+{"id":5,"title":"Probar PostgreSQL en Docker","done":false}
 
 ---
 
 ## Swagger UI Screenshot
 
 ![Swagger UI](swagger.png)
-
----
 
 ---
 
@@ -87,13 +105,10 @@ content-type: application/json
 ### Refined Prompt Takeaway
 When prompting AI for backend modules, specifying constraints on code architecture (e.g., *"keep implementation lightweight in a single main.py file without external test suites"*) is as vital as specifying endpoint business logic.
 
-## Database Implementation (SQLite)
+---
 
-- **Why SQLite?** It is lightweight, serverless, requires zero configuration, and stores data in a single file (`tasks.db`) that persists across server restarts.
-- **Database Location:** `tasks.db` at the project root (ignored by Git so every clone starts fresh)[cite: 1].
-- **How to Run:**
-  ```bash
-  uvicorn main:app --reload
+## Database Migration Journey
 
-  Example SQL Query executed manually:
-  SELECT * FROM tasks WHERE done = 1;
+- **Stage 1 (In-Memory)**: Volatile RAM storage where data resets on server restart.
+- **Stage 2 (SQLite)**: File-based persistence (`tasks.db`) using Python's built-in `sqlite3` module.
+- **Stage 3 (PostgreSQL in Docker)**: Enterprise-grade relational database engine running in an isolated Docker container with host-mounted volume (`taskdata`) ensuring full data durability, driver abstraction via `psycopg`, and environment variable management using `python-dotenv`.
